@@ -58,7 +58,8 @@ DEFAULT_CONFIG = {
     "PORT": 8085,
     "KUMA_URL": "",
     "MIN_SAVINGS_GB": 0.5,
-    "LANGUAGE": "PL"
+    "LANGUAGE": "PL",
+    "SCAN_INTERVAL_MINUTES": 60
 }
 
 def load_config():
@@ -101,10 +102,43 @@ state = {
     "stats": load_stats(CONFIG["STATS_FILE"]),
     "processed_files": load_processed_files(CONFIG["PROCESSED_FILES"]),
     "paused": False,
-    "skip": False
+    "skip": False,
+    "processing_active": False,
+    "transcode_start_time": 0,
+    "transcode_file_size": 0
 }
 
 app = Flask(__name__)
+
+def format_time_remaining():
+    """Calculate and format estimated time remaining for current transcode"""
+    if not state['processing_active'] or state['transcode_start_time'] == 0:
+        return ""
+    
+    elapsed = time.time() - state['transcode_start_time']
+    if elapsed < 10:  # Too early to estimate
+        return "Calculating..."
+    
+    # Rough estimate: assume ~0.5 GB per minute (very approximate)
+    # Better would be to parse FFmpeg progress, but this is MVP
+    minutes_elapsed = elapsed / 60
+    gb_per_minute = state['transcode_file_size'] / minutes_elapsed if minutes_elapsed > 0 else 0
+    
+    if gb_per_minute > 0:
+        # Estimate based on rough 50% compression
+        estimated_output_size = state['transcode_file_size'] * 0.5
+        # Rough time estimate
+        estimated_total_minutes = state['transcode_file_size'] / gb_per_minute if gb_per_minute > 0 else 0
+        remaining_minutes = max(0, estimated_total_minutes - minutes_elapsed)
+        
+        if remaining_minutes > 60:
+            hours = int(remaining_minutes // 60)
+            mins = int(remaining_minutes % 60)
+            return f"~{hours}h {mins}m"
+        else:
+            return f"~{int(remaining_minutes)}m"
+    
+    return "Calculating..."
 
 def worker_loop():
     logger.info("=== HEVC WATCHDOG V1.0 START ===")
@@ -184,7 +218,10 @@ def worker_loop():
 
             state['status'] = "Transcoding..."
             state['current_file'] = file_name
+            state['processing_active'] = True
+            state['transcode_start_time'] = time.time()
             orig_size_gb = os.path.getsize(file_path) / (1024**3)
+            state['transcode_file_size'] = orig_size_gb
             logger.info(f"START: {file_name} ({codec}) - {orig_size_gb:.2f} GB → est. {estimated_size:.2f} GB")
             
             output_file = os.path.join(CONFIG["TEMP_FOLDER"], file_name + CONFIG["OUTPUT_SUFFIX"])
@@ -292,10 +329,13 @@ def worker_loop():
                 logger.error(f"Exception: {e}")
 
             state['current_file'] = "None"
+            state['processing_active'] = False
             push_kuma(CONFIG["KUMA_URL"])
 
         state['status'] = "Idle"
-        time.sleep(60)
+        scan_interval = CONFIG.get("SCAN_INTERVAL_MINUTES", 60) * 60
+        logger.info(f"Scan complete. Next scan in {CONFIG.get('SCAN_INTERVAL_MINUTES', 60)} minutes.")
+        time.sleep(scan_interval)
 
 @app.route('/')
 def dashboard():
@@ -363,6 +403,7 @@ def dashboard():
             <div class="status-group">
                 <div class="status">{state['status']}</div>
                 <div class="file">{state['current_file']}</div>
+                {'<div class="file" style="color:#fcc419;margin-top:2px"><i class="fa-solid fa-clock"></i> ETA: ' + format_time_remaining() + '</div>' if state['processing_active'] else ''}
             </div>
             <div class="controls">
                 <a href="/toggle_pause" class="btn btn-pause" title="Pause/Start"><i class="fa-solid {pause_icon}"></i></a>

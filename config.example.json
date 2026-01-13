@@ -10,5 +10,7 @@
     "OUTPUT_SUFFIX": ".hevc.mkv",
     "PORT": 8085,
     "KUMA_URL": "",
-    "MIN_SAVINGS_GB": 0.5
+    "MIN_SAVINGS_GB": 0.5,
+    "LANGUAGE": "EN",
+    "SCAN_INTERVAL_MINUTES": 60
 }
