@@ -8,6 +8,7 @@ import requests
 import sys
 import shutil
 from flask import Flask, redirect, url_for
+from watchdog_core import load_stats, save_stats, push_kuma, get_video_codec, kill_process_tree, get_last_logs
 
 # --- DEFAULT CONFIGURATION ---
 DEFAULT_CONFIG = {
@@ -57,54 +58,15 @@ logging.getLogger('werkzeug').setLevel(logging.ERROR)
 state = {
     "status": "Inicjalizacja",
     "current_file": "Brak",
-    "stats": {"processed": 0, "gb_proc": 0.0, "gb_saved": 0.0},
+    "stats": load_stats(CONFIG["STATS_FILE"]),
     "paused": False,
     "skip": False
 }
 
 app = Flask(__name__)
 
-def load_stats():
-    if os.path.exists(CONFIG["STATS_FILE"]):
-        try:
-            with open(CONFIG["STATS_FILE"], 'r', encoding='utf-8') as f:
-                state['stats'] = json.load(f)
-        except: pass
-
-def save_stats():
-    try:
-        with open(CONFIG["STATS_FILE"], 'w', encoding='utf-8') as f:
-            json.dump(state['stats'], f)
-    except: pass
-
-def push_kuma():
-    if CONFIG["KUMA_URL"]:
-        try: requests.get(CONFIG["KUMA_URL"], timeout=10)
-        except: pass
-
-def kill_process_tree(pid):
-    try:
-        subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)], capture_output=True, creationflags=0x08000000)
-    except: pass
-
-def get_video_codec(filepath):
-    try:
-        cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", filepath]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15, creationflags=0x08000000)
-        return result.stdout.strip()
-    except: return None
-
-def get_last_logs(n=120):
-    if not os.path.exists(CONFIG["LOG_FILE"]): return ""
-    try:
-        with open(CONFIG["LOG_FILE"], "r", encoding='utf-8') as f:
-            lines = f.readlines()
-            return "".join(lines[-n:])
-    except: return "Blad odczytu logow..."
-
 def worker_loop():
     logger.info("=== HEVC WATCHDOG V1.0 START ===")
-    load_stats()
     
     while True:
         if state['paused']:
@@ -113,7 +75,7 @@ def worker_loop():
             continue
 
         state['status'] = "Scanning..."
-        push_kuma()
+        push_kuma(CONFIG["KUMA_URL"])
         
         all_videos = []
         for root_dir in CONFIG["SOURCE_DIRS"]:
@@ -216,7 +178,7 @@ def worker_loop():
                         state['stats']['processed'] += 1
                         state['stats']['gb_proc'] += orig_s
                         state['stats']['gb_saved'] += (orig_s - new_s)
-                        save_stats()
+                        save_stats(CONFIG["STATS_FILE"], state['stats'])
                         logger.info(f"SUCCESS: {file_name} (-{orig_s-new_s:.2f} GB)")
                     else:
                         os.remove(output_file)
@@ -229,7 +191,7 @@ def worker_loop():
                 logger.error(f"Exception: {e}")
 
             state['current_file'] = "None"
-            push_kuma()
+            push_kuma(CONFIG["KUMA_URL"])
 
         state['status'] = "Idle"
         time.sleep(60)
@@ -237,7 +199,7 @@ def worker_loop():
 @app.route('/')
 def dashboard():
     s = state['stats']
-    logs = get_last_logs(120)
+    logs = get_last_logs(CONFIG["LOG_FILE"])
     pause_icon = "fa-play" if state['paused'] else "fa-pause"
     pause_color = "#fcc419" if state['paused'] else "#fa5252"
     
@@ -318,3 +280,18 @@ def dashboard():
         if(objDiv) objDiv.scrollTop = objDiv.scrollHeight;
     </script>
     </body></html>"
+
+@app.route('/toggle_pause')
+def toggle_pause():
+    state['paused'] = not state['paused']
+    return redirect(url_for('dashboard'))
+
+@app.route('/skip')
+def skip():
+    state['skip'] = True
+    return redirect(url_for('dashboard'))
+
+if __name__ == "__main__":
+    t = threading.Thread(target=worker_loop, daemon=True)
+    t.start()
+    app.run(host='0.0.0.0', port=CONFIG["PORT"])"""

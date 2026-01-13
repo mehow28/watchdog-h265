@@ -7,13 +7,14 @@ import logging
 import requests
 import sys
 from flask import Flask
+from watchdog_core import load_stats, save_stats, push_kuma, get_video_codec
 
 # --- KONFIGURACJA ---
 SOURCE_DIRS = ["/films", "/tv"]
 STATS_FILE = "/config/stats.json"
 LOG_FILE = "/config/watchdog.log"
 TEMP_EXT = ".temp.mkv"
-KUMA_URL = "http://192.168.1.10:3001/api/push/FtzlRSt7re?status=up&msg=OK&ping="
+KUMA_URL = "[MY_KUMA_URL]/api/push/[KEY]}?status=up&msg=OK&ping="
 
 # Setup Logging
 logger = logging.getLogger()
@@ -36,38 +37,17 @@ logging.getLogger('werkzeug').setLevel(logging.ERROR)
 state = {
     "status": "Inicjalizacja",
     "current_file": "Brak",
-    "stats": {"processed": 0, "gb_proc": 0.0, "gb_saved": 0.0}
+    "stats": load_stats(STATS_FILE)
 }
 
 app = Flask(__name__)
 
-def load_stats():
-    if os.path.exists(STATS_FILE):
-        try:
-            with open(STATS_FILE, 'r') as f:
-                state['stats'] = json.load(f)
-        except: pass
-
-def save_stats():
-    try:
-        with open(STATS_FILE, 'w') as f:
-            json.dump(state['stats'], f)
-    except: pass
-
-def push_kuma():
-    if KUMA_URL:
-        try:
-            r = requests.get(KUMA_URL, timeout=10)
-            if r.status_code != 200: logger.error(f"Kuma Error: {r.status_code}")
-        except: pass
-
 def worker_loop():
-    logger.info("=== OFIELD WATCHDOG V3.5 (DIAGNOSTIC) START ===")
-    load_stats()
+    logger.info("=== WATCHDOG V3.5 (DIAGNOSTIC) START ===")
     
     while True:
         state['status'] = "Skanowanie..."
-        push_kuma()
+        push_kuma(KUMA_URL)
         
         found_files = []
         for root_dir in SOURCE_DIRS:
@@ -119,7 +99,7 @@ def worker_loop():
                         state['stats']['processed'] += 1
                         state['stats']['gb_proc'] += orig_s
                         state['stats']['gb_saved'] += (orig_s - new_s)
-                        save_stats()
+                        save_stats(STATS_FILE, state['stats'])
                         logger.info(f"SUKCES: {file_name} (-{orig_s-new_s:.2f} GB)")
                     else:
                         os.remove(output_file)
@@ -127,7 +107,7 @@ def worker_loop():
             except Exception as e: logger.error(f"Wyjatek: {e}")
 
             state['current_file'] = "Brak"
-            push_kuma()
+            push_kuma(KUMA_URL)
 
         state['status'] = "Czuwanie"
         time.sleep(60)
