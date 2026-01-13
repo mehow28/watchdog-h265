@@ -13,6 +13,40 @@ from watchdog_core import (load_stats, save_stats, push_kuma, get_video_codec,
                            kill_process_tree, get_last_logs, load_processed_files, 
                            save_processed_files, estimate_hevc_size)
 
+# --- STRINGS / TRANSLATIONS ---
+STRINGS = {
+    "EN": {
+        "init": "Initialization",
+        "scanning": "Scanning...",
+        "paused": "PAUSED",
+        "waiting": "Waiting...",
+        "transcoding": "Transcoding...",
+        "idle": "Idle",
+        "files": "Files",
+        "gb_proc": "GB Proc",
+        "savings": "Savings",
+        "skip_q": "Skip file?",
+        "skip_desc": "Current transcoding will be terminated.",
+        "yes": "YES",
+        "no": "NIE"
+    },
+    "PL": {
+        "init": "Inicjalizacja",
+        "scanning": "Skanowanie...",
+        "paused": "PAUZA",
+        "waiting": "Oczekiwanie...",
+        "transcoding": "Konwersja...",
+        "idle": "Czuwanie",
+        "files": "Pliki",
+        "gb_proc": "GB Proc",
+        "savings": "Oszczędność",
+        "skip_q": "Pominąć plik?",
+        "skip_desc": "Obecna konwersja zostanie przerwana.",
+        "yes": "TAK",
+        "no": "NIE"
+    }
+}
+
 # --- DEFAULT CONFIGURATION ---
 DEFAULT_CONFIG = {
     "SOURCE_DIRS": [],
@@ -23,7 +57,8 @@ DEFAULT_CONFIG = {
     "OUTPUT_SUFFIX": ".hevc.mkv",
     "PORT": 8085,
     "KUMA_URL": "",
-    "MIN_SAVINGS_GB": 0.5
+    "MIN_SAVINGS_GB": 0.5,
+    "LANGUAGE": "PL"
 }
 
 def load_config():
