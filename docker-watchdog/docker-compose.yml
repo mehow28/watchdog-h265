@@ -1,0 +1,14 @@
+services:
+  watchdog:
+    build: .
+    container_name: ofield-watchdog
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    volumes:
+      # Slashe w prawo (Forward slashes) sa kluczowe dla Dockera na Windows!
+      - "//192.168.1.10/media_filmy/Film:/films"
+      - "//192.168.1.10/media_filmy/TV:/tv"
+      - "./data:/config"
+    environment:
+      - PYTHONUNBUFFERED=1

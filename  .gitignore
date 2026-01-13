@@ -1,0 +1,16 @@
+# Logs and Stats
+watchdog.log
+ffmpeg.log
+stats.json
+config.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Private scripts
+youtrack_post.py
+watchdog_win.py
+watchdog_service.ps1
