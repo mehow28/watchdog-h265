@@ -37,7 +37,7 @@ HEVC Watchdog to inteligentna usługa działająca w tle, stworzona dla serweró
 *   **Kontrolki:** Przyciski **Pauza/Play** oraz **Pomiń (Skip)** obecny plik.
 *   **Monitoring:** Wsparcie dla powiadomień Uptime Kuma.
 
-### 🚀 Szybki Start
+### Szybki Start
 1.  **Instalacja:** `pip install flask requests`
 2.  **Konfiguracja:** Edytuj `config.json` wpisując swoje ścieżki.
 3.  **Uruchomienie:** `python watchdog_h265.py`
