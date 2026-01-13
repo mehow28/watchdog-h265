@@ -1,7 +1,9 @@
 # HEVC Watchdog
 
 <img width="742" height="360" alt="obraz" src="https://github.com/user-attachments/assets/dd9fa887-e00f-4980-9a2b-86824fed8eb4" />
+
 (localhost:8085) -> Homar iFrame widget)
+
 [EN](#english) | [PL](#polski)
 
 ---
