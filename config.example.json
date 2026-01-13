@@ -1,16 +1,53 @@
 {
+    "_comment_1": "=== BASIC CONFIGURATION ===",
+    
     "SOURCE_DIRS": [
         "/path/to/movies",
         "/path/to/tv-shows"
     ],
+    "_comment_SOURCE_DIRS": "List of folders to monitor. Can be simple paths or objects with per-folder config (see advanced example below)",
+    
     "TEMP_FOLDER": "watchdog_temp",
+    "_comment_TEMP_FOLDER": "Temporary folder for transcoding files",
+    
     "STATS_FILE": "stats.json",
     "LOG_FILE": "watchdog.log",
     "PROCESSED_FILES": "processed_files.json",
+    "_comment_FILES": "Storage files for stats, logs, and processed file tracking",
+    
     "OUTPUT_SUFFIX": ".hevc.mkv",
+    "_comment_OUTPUT_SUFFIX": "Suffix for already-processed files (prevents re-processing)",
+    
     "PORT": 8085,
+    "_comment_PORT": "Web dashboard port",
+    
     "KUMA_URL": "",
+    "_comment_KUMA_URL": "Optional: Uptime Kuma push URL for monitoring",
+    
     "MIN_SAVINGS_GB": 0.5,
+    "_comment_MIN_SAVINGS_GB": "Minimum GB savings required to proceed with conversion (pre-check)",
+    
     "LANGUAGE": "EN",
-    "SCAN_INTERVAL_MINUTES": 60
+    "_comment_LANGUAGE": "UI language: EN or PL",
+    
+    "SCAN_INTERVAL_MINUTES": 60,
+    "_comment_SCAN_INTERVAL_MINUTES": "How often to scan folders (in minutes). Global default if not using per-folder config",
+    
+    "PARALLEL_PROCESSING": false,
+    "_comment_PARALLEL_PROCESSING": "NOT YET IMPLEMENTED: Enable to process multiple folders simultaneously",
+    
+    "_comment_2": "=== ADVANCED: PER-FOLDER CONFIGURATION (Coming soon) ===",
+    "_example_SOURCE_DIRS_advanced": [
+        {
+            "path": "/path/to/movies",
+            "scan_interval_minutes": 60,
+            "name": "Movies"
+        },
+        {
+            "path": "/path/to/tv-shows",
+            "scan_interval_minutes": 30,
+            "name": "TV Shows"
+        }
+    ],
+    "_comment_advanced": "Per-folder intervals will be available in next release. For now, use simple paths and SCAN_INTERVAL_MINUTES"
 }
