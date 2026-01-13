@@ -6,7 +6,9 @@
     "TEMP_FOLDER": "watchdog_temp",
     "STATS_FILE": "stats.json",
     "LOG_FILE": "watchdog.log",
+    "PROCESSED_FILES": "processed_files.json",
     "OUTPUT_SUFFIX": ".hevc.mkv",
     "PORT": 8085,
-    "KUMA_URL": ""
+    "KUMA_URL": "",
+    "MIN_SAVINGS_GB": 0.5
 }

@@ -74,3 +74,59 @@ def get_last_logs(log_file, n=120):
             return "".join(lines[-n:])
     except:
         return "Błąd odczytu logów..."
+
+def load_processed_files(processed_file):
+    """Load list of already processed files"""
+    if os.path.exists(processed_file):
+        try:
+            with open(processed_file, 'r', encoding='utf-8') as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
+
+def save_processed_files(processed_file, processed_set):
+    """Save list of processed files"""
+    try:
+        with open(processed_file, 'w', encoding='utf-8') as f:
+            json.dump(list(processed_set), f, indent=2)
+    except:
+        pass
+
+def estimate_hevc_size(filepath, codec):
+    """
+    Estimate potential file size after HEVC conversion.
+    Returns (estimated_size_gb, worth_converting: bool)
+    
+    Rough estimates based on codec:
+    - h264/avc: ~50% compression
+    - mpeg4/xvid: ~60% compression  
+    - mpeg2: ~70% compression
+    - others: ~50% compression
+    """
+    try:
+        original_size = os.path.getsize(filepath) / (1024**3)  # GB
+        
+        # Compression ratios (how much smaller HEVC will be)
+        compression_ratios = {
+            'h264': 0.50,
+            'avc': 0.50,
+            'mpeg4': 0.60,
+            'xvid': 0.60,
+            'mpeg2': 0.70,
+            'vc1': 0.55,
+            'vp8': 0.55,
+            'vp9': 0.45
+        }
+        
+        ratio = compression_ratios.get(codec.lower(), 0.50)
+        estimated_size = original_size * ratio
+        
+        # Only worth converting if we save at least 500 MB
+        min_savings = 0.5  # GB
+        potential_savings = original_size - estimated_size
+        
+        return estimated_size, potential_savings >= min_savings
+        
+    except:
+        return 0, True  # If estimation fails, proceed with conversion

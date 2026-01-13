@@ -2,6 +2,7 @@ watchdog_temp/
 stats.json
 watchdog.log
 config.json
+processed_files.json
 __pycache__/
 *.pyc
 *.pyo

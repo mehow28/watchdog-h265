@@ -9,7 +9,9 @@ import sys
 import shutil
 import platform
 from flask import Flask, redirect, url_for
-from watchdog_core import load_stats, save_stats, push_kuma, get_video_codec, kill_process_tree, get_last_logs
+from watchdog_core import (load_stats, save_stats, push_kuma, get_video_codec, 
+                           kill_process_tree, get_last_logs, load_processed_files, 
+                           save_processed_files, estimate_hevc_size)
 
 # --- DEFAULT CONFIGURATION ---
 DEFAULT_CONFIG = {
@@ -17,9 +19,11 @@ DEFAULT_CONFIG = {
     "TEMP_FOLDER": "watchdog_temp",
     "STATS_FILE": "stats.json",
     "LOG_FILE": "watchdog.log",
+    "PROCESSED_FILES": "processed_files.json",
     "OUTPUT_SUFFIX": ".hevc.mkv",
     "PORT": 8085,
-    "KUMA_URL": ""
+    "KUMA_URL": "",
+    "MIN_SAVINGS_GB": 0.5
 }
 
 def load_config():
@@ -60,6 +64,7 @@ state = {
     "status": "Inicjalizacja",
     "current_file": "Brak",
     "stats": load_stats(CONFIG["STATS_FILE"]),
+    "processed_files": load_processed_files(CONFIG["PROCESSED_FILES"]),
     "paused": False,
     "skip": False
 }
@@ -92,14 +97,29 @@ def worker_loop():
         
         candidates = []
         for vid in all_videos:
-            if os.path.exists(vid + CONFIG["OUTPUT_SUFFIX"]): continue
+            # Skip if output file already exists
+            if os.path.exists(vid + CONFIG["OUTPUT_SUFFIX"]): 
+                continue
+            
+            # Skip if already processed (file path in history)
+            if vid in state['processed_files']:
+                continue
+            
             codec = get_video_codec(vid)
             if codec and codec not in ['hevc', 'h265']:
-                candidates.append((vid, codec))
+                # Estimate if conversion is worth it
+                estimated_size, worth_it = estimate_hevc_size(vid, codec)
+                if worth_it:
+                    candidates.append((vid, codec, estimated_size))
+                else:
+                    logger.info(f"SKIP (too small savings): {os.path.basename(vid)} - estimated savings < {CONFIG['MIN_SAVINGS_GB']} GB")
+                    # Mark as processed so we don't check again
+                    state['processed_files'].add(vid)
+                    save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
         
-        if candidates: logger.info(f"Queue: {len(candidates)} files.")
+        if candidates: logger.info(f"Queue: {len(candidates)} files (pre-checked for worthwhile savings)")
 
-        for file_path, codec in candidates:
+        for file_path, codec, estimated_size in candidates:
             # Check for skip before processing
             if state['skip']:
                 state['skip'] = False
@@ -129,7 +149,8 @@ def worker_loop():
 
             state['status'] = "Transcoding..."
             state['current_file'] = file_name
-            logger.info(f"START: {file_name} ({codec})")
+            orig_size_gb = os.path.getsize(file_path) / (1024**3)
+            logger.info(f"START: {file_name} ({codec}) - {orig_size_gb:.2f} GB → est. {estimated_size:.2f} GB")
             
             output_file = os.path.join(CONFIG["TEMP_FOLDER"], file_name + CONFIG["OUTPUT_SUFFIX"])
             
@@ -212,14 +233,22 @@ def worker_loop():
                     if new_s < orig_s:
                         os.remove(file_path)
                         shutil.move(output_file, file_path)
+                        
+                        # Add to processed files list
+                        state['processed_files'].add(file_path)
+                        save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
+                        
                         state['stats']['processed'] += 1
                         state['stats']['gb_proc'] += orig_s
                         state['stats']['gb_saved'] += (orig_s - new_s)
                         save_stats(CONFIG["STATS_FILE"], state['stats'])
-                        logger.info(f"SUCCESS: {file_name} (-{orig_s-new_s:.2f} GB)")
+                        logger.info(f"SUCCESS: {file_name} (-{orig_s-new_s:.2f} GB) | Est: {estimated_size:.2f} GB, Actual: {new_s:.2f} GB")
                     else:
                         os.remove(output_file)
-                        logger.info(f"SKIPPED: {file_name} (No savings)")
+                        # Mark as processed even if no savings (don't retry)
+                        state['processed_files'].add(file_path)
+                        save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
+                        logger.info(f"SKIPPED: {file_name} (No actual savings, will not retry)")
                 else:
                     if not was_interrupted:
                         logger.error(f"FFMPEG ERROR: {file_name}")
