@@ -8,6 +8,7 @@ import requests
 import sys
 import shutil
 import platform
+from queue import Queue, Empty
 from flask import Flask, redirect, url_for
 from watchdog_core import (load_stats, save_stats, push_kuma, get_video_codec, 
                            kill_process_tree, get_last_logs, load_processed_files, 
@@ -59,15 +60,58 @@ DEFAULT_CONFIG = {
     "KUMA_URL": "",
     "MIN_SAVINGS_GB": 0.5,
     "LANGUAGE": "PL",
-    "SCAN_INTERVAL_MINUTES": 60
+    "SCAN_INTERVAL_MINUTES": 60,
+    "PARALLEL_PROCESSING": False
 }
+
+def normalize_source_dirs(source_dirs, default_interval):
+    """
+    Normalize SOURCE_DIRS to unified format with per-folder config.
+    Supports:
+    - Old: ["path1", "path2"]
+    - New: [{"path": "path1", "scan_interval_minutes": 60, "name": "Movies"}]
+    """
+    normalized = []
+    
+    for item in source_dirs:
+        if isinstance(item, str):
+            # Old format: just path string
+            normalized.append({
+                "path": item,
+                "scan_interval_minutes": default_interval,
+                "name": os.path.basename(item) or item
+            })
+        elif isinstance(item, dict):
+            # New format: dict with config
+            if "path" not in item:
+                logger.warning(f"Skipping invalid SOURCE_DIR entry (no path): {item}")
+                continue
+            normalized.append({
+                "path": item["path"],
+                "scan_interval_minutes": item.get("scan_interval_minutes", default_interval),
+                "name": item.get("name", os.path.basename(item["path"]) or item["path"])
+            })
+        else:
+            logger.warning(f"Skipping invalid SOURCE_DIR entry: {item}")
+    
+    return normalized
 
 def load_config():
     if os.path.exists("config.json"):
         try:
             with open("config.json", "r", encoding='utf-8') as f:
                 user_config = json.load(f)
-                return {**DEFAULT_CONFIG, **user_config}
+                config = {**DEFAULT_CONFIG, **user_config}
+                
+                # Normalize SOURCE_DIRS to new format
+                if "SOURCE_DIRS" in config:
+                    default_interval = config.get("SCAN_INTERVAL_MINUTES", 60)
+                    config["SOURCE_DIRS"] = normalize_source_dirs(
+                        config["SOURCE_DIRS"], 
+                        default_interval
+                    )
+                
+                return config
         except Exception as e:
             print(f"Error loading config.json: {e}")
     return DEFAULT_CONFIG
@@ -96,16 +140,29 @@ except: pass
 
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
+# Per-folder scan schedule
+scan_schedule = {}
+for folder_config in CONFIG["SOURCE_DIRS"]:
+    scan_schedule[folder_config["path"]] = {
+        "last_scan": 0,
+        "interval": folder_config["scan_interval_minutes"] * 60,
+        "name": folder_config["name"],
+        "next_scan": 0,
+        "status": "Idle"
+    }
+
 state = {
     "status": "Inicjalizacja",
     "current_file": "Brak",
+    "current_folder": "",
     "stats": load_stats(CONFIG["STATS_FILE"]),
     "processed_files": load_processed_files(CONFIG["PROCESSED_FILES"]),
     "paused": False,
     "skip": False,
     "processing_active": False,
     "transcode_start_time": 0,
-    "transcode_file_size": 0
+    "transcode_file_size": 0,
+    "folder_statuses": {}  # For parallel mode: track each folder status
 }
 
 app = Flask(__name__)
