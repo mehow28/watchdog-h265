@@ -1,0 +1,17 @@
+{
+    "SOURCE_DIRS": [
+        {
+            "path": "/path/to/movies",
+            "scan_interval_minutes": 180,
+            "name": "Movies"
+        },
+        {
+            "path": "/path/to/tv-shows",
+            "scan_interval_minutes": 30,
+            "name": "TV Shows"
+        }
+    ],
+    "LANGUAGE": "EN",
+    "MIN_SAVINGS_GB": 0.5,
+    "PORT": 8085
+}

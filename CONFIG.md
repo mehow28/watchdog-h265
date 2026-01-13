@@ -30,12 +30,12 @@
 ]
 ```
 
-**Advanced format (per-folder intervals - coming soon):**
+**Advanced format (per-folder intervals):**
 ```json
 "SOURCE_DIRS": [
     {
         "path": "/path/to/movies",
-        "scan_interval_minutes": 60,
+        "scan_interval_minutes": 180,
         "name": "Movies"
     },
     {
@@ -46,6 +46,13 @@
 ]
 ```
 
+**Per-folder options:**
+- `path` (required) - Folder path to scan
+- `scan_interval_minutes` (optional) - How often to scan this specific folder (overrides global `SCAN_INTERVAL_MINUTES`)
+- `name` (optional) - Display name for dashboard (defaults to folder name)
+
+This is useful when different folders have different update frequencies. For example, scan TV shows every 30 minutes (new episodes often), but movies only every 3 hours (updated less frequently).
+
 ---
 
 ### Optional Fields
@@ -53,13 +60,15 @@
 #### `SCAN_INTERVAL_MINUTES`
 **Type:** Integer  
 **Default:** `60`  
-**Description:** How often to scan folders (in minutes)
+**Description:** Global default for how often to scan folders (in minutes)
+
+This can be overridden per-folder using the advanced `SOURCE_DIRS` format.
 
 **Example:**
 ```json
 "SCAN_INTERVAL_MINUTES": 120
 ```
-Scans every 2 hours instead of every hour.
+Scans every 2 hours instead of every hour (applies to all folders unless overridden).
 
 ---
 
@@ -180,6 +189,33 @@ Only specify what you need - rest uses defaults:
     "KUMA_URL": "https://uptime.example.com/api/push/xxxxx?status=up&msg=OK&ping="
 }
 ```
+
+### Per-Folder Intervals Config
+Different scan frequencies for different folders:
+```json
+{
+    "SOURCE_DIRS": [
+        {
+            "path": "\\\\nas\\movies",
+            "scan_interval_minutes": 240,
+            "name": "Movies (4h)"
+        },
+        {
+            "path": "\\\\nas\\tv",
+            "scan_interval_minutes": 30,
+            "name": "TV Shows (30m)"
+        },
+        {
+            "path": "\\\\nas\\archive",
+            "scan_interval_minutes": 1440,
+            "name": "Archive (daily)"
+        }
+    ],
+    "LANGUAGE": "PL",
+    "MIN_SAVINGS_GB": 1.0
+}
+```
+The dashboard will show each folder's schedule and next scan time.
 
 ### Docker Config
 ```json

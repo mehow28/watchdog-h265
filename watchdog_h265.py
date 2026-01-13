@@ -197,6 +197,87 @@ def format_time_remaining():
     
     return "Calculating..."
 
+def should_scan_folder(folder_path):
+    """Check if a folder is due for scanning based on its schedule"""
+    if folder_path not in scan_schedule:
+        return False
+    
+    schedule = scan_schedule[folder_path]
+    current_time = time.time()
+    
+    # First scan or time to scan again
+    if schedule["last_scan"] == 0:
+        return True
+    
+    time_since_last = current_time - schedule["last_scan"]
+    return time_since_last >= schedule["interval"]
+
+def scan_folder(folder_path):
+    """
+    Scan a single folder for video files that need transcoding.
+    Returns list of (file_path, codec, estimated_size) tuples.
+    """
+    if not os.path.exists(folder_path):
+        logger.error(f"Directory unreachable: {folder_path}")
+        return []
+    
+    all_videos = []
+    for dirpath, _, filenames in os.walk(folder_path):
+        for f in filenames:
+            if f.lower().endswith(('.mkv', '.mp4', '.avi')) and not f.endswith(CONFIG["OUTPUT_SUFFIX"]):
+                all_videos.append(os.path.join(dirpath, f))
+    
+    all_videos.sort()
+    
+    candidates = []
+    for vid in all_videos:
+        # Skip if output file already exists
+        if os.path.exists(vid + CONFIG["OUTPUT_SUFFIX"]): 
+            continue
+        
+        # Skip if already processed (file path in history)
+        if vid in state['processed_files']:
+            continue
+        
+        codec = get_video_codec(vid)
+        if codec and codec not in ['hevc', 'h265']:
+            # Estimate if conversion is worth it
+            estimated_size, worth_it = estimate_hevc_size(vid, codec)
+            if worth_it:
+                candidates.append((vid, codec, estimated_size))
+            else:
+                logger.info(f"SKIP (too small savings): {os.path.basename(vid)} - estimated savings < {CONFIG['MIN_SAVINGS_GB']} GB")
+                # Mark as processed so we don't check again
+                state['processed_files'].add(vid)
+                save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
+    
+    return candidates
+
+def get_next_scan_time(folder_path):
+    """Get formatted time until next scan for a folder"""
+    if folder_path not in scan_schedule:
+        return "N/A"
+    
+    schedule = scan_schedule[folder_path]
+    current_time = time.time()
+    
+    if schedule["last_scan"] == 0:
+        return "Now"
+    
+    next_scan_time = schedule["last_scan"] + schedule["interval"]
+    time_until = next_scan_time - current_time
+    
+    if time_until <= 0:
+        return "Now"
+    
+    minutes_until = int(time_until / 60)
+    if minutes_until < 60:
+        return f"{minutes_until}m"
+    else:
+        hours = minutes_until // 60
+        mins = minutes_until % 60
+        return f"{hours}h {mins}m"
+
 def worker_loop():
     logger.info("=== HEVC WATCHDOG V1.0 START ===")
     
@@ -206,44 +287,50 @@ def worker_loop():
             time.sleep(2)
             continue
 
-        state['status'] = "Scanning..."
-        push_kuma(CONFIG["KUMA_URL"])
+        # Check which folders need scanning based on their individual schedules
+        folders_to_scan = []
+        for folder_config in CONFIG["SOURCE_DIRS"]:
+            folder_path = folder_config["path"]
+            if should_scan_folder(folder_path):
+                folders_to_scan.append(folder_config)
         
-        all_videos = []
-        for root_dir in CONFIG["SOURCE_DIRS"]:
-            if not os.path.exists(root_dir):
-                logger.error(f"Directory unreachable: {root_dir}")
-                continue
-            for dirpath, _, filenames in os.walk(root_dir):
-                for f in filenames:
-                    if f.lower().endswith(('.mkv', '.mp4', '.avi')) and not f.endswith(CONFIG["OUTPUT_SUFFIX"]):
-                        all_videos.append(os.path.join(dirpath, f))
+        # If no folders need scanning, wait and check again
+        if not folders_to_scan:
+            state['status'] = "Idle"
+            time.sleep(60)  # Check every minute
+            continue
         
-        all_videos.sort()
-        
+        # Scan folders that are due
         candidates = []
-        for vid in all_videos:
-            # Skip if output file already exists
-            if os.path.exists(vid + CONFIG["OUTPUT_SUFFIX"]): 
-                continue
+        for folder_config in folders_to_scan:
+            folder_path = folder_config["path"]
+            folder_name = folder_config["name"]
             
-            # Skip if already processed (file path in history)
-            if vid in state['processed_files']:
-                continue
+            state['status'] = f"Scanning: {folder_name}"
+            state['current_folder'] = folder_name
+            scan_schedule[folder_path]["status"] = "Scanning"
             
-            codec = get_video_codec(vid)
-            if codec and codec not in ['hevc', 'h265']:
-                # Estimate if conversion is worth it
-                estimated_size, worth_it = estimate_hevc_size(vid, codec)
-                if worth_it:
-                    candidates.append((vid, codec, estimated_size))
-                else:
-                    logger.info(f"SKIP (too small savings): {os.path.basename(vid)} - estimated savings < {CONFIG['MIN_SAVINGS_GB']} GB")
-                    # Mark as processed so we don't check again
-                    state['processed_files'].add(vid)
-                    save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
+            logger.info(f"Scanning folder: {folder_name} ({folder_path})")
+            push_kuma(CONFIG["KUMA_URL"])
+            
+            folder_candidates = scan_folder(folder_path)
+            candidates.extend(folder_candidates)
+            
+            # Update schedule
+            scan_schedule[folder_path]["last_scan"] = time.time()
+            scan_schedule[folder_path]["next_scan"] = time.time() + scan_schedule[folder_path]["interval"]
+            scan_schedule[folder_path]["status"] = "Idle"
+            
+            logger.info(f"Folder {folder_name}: Found {len(folder_candidates)} files to process")
         
-        if candidates: logger.info(f"Queue: {len(candidates)} files (pre-checked for worthwhile savings)")
+        if candidates:
+            logger.info(f"Total queue: {len(candidates)} files (pre-checked for worthwhile savings)")
+        else:
+            logger.info("No files need transcoding")
+            state['status'] = "Idle"
+            state['current_folder'] = ""
+            time.sleep(60)
+            continue
 
         for file_path, codec, estimated_size in candidates:
             # Check for skip before processing
@@ -387,12 +474,12 @@ def worker_loop():
 
             state['current_file'] = "None"
             state['processing_active'] = False
+            state['current_folder'] = ""
             push_kuma(CONFIG["KUMA_URL"])
 
         state['status'] = "Idle"
-        scan_interval = CONFIG.get("SCAN_INTERVAL_MINUTES", 60) * 60
-        logger.info(f"Scan complete. Next scan in {CONFIG.get('SCAN_INTERVAL_MINUTES', 60)} minutes.")
-        time.sleep(scan_interval)
+        logger.info("Processing complete. Checking schedules...")
+        time.sleep(10)  # Brief pause before checking schedules again
 
 @app.route('/')
 def dashboard():
@@ -400,6 +487,36 @@ def dashboard():
     logs = get_last_logs(CONFIG["LOG_FILE"])
     pause_icon = "fa-play" if state['paused'] else "fa-pause"
     pause_color = "#fcc419" if state['paused'] else "#fa5252"
+    
+    # Build folder schedule HTML
+    folder_schedule_html = ""
+    if len(CONFIG["SOURCE_DIRS"]) > 1:  # Only show if multiple folders
+        folder_schedule_html = "<div style='margin-top:10px;background:#25262b;border:1px solid #373a40;border-radius:8px;padding:15px'>"
+        folder_schedule_html += "<div style='color:#868e96;font-size:0.8em;text-transform:uppercase;margin-bottom:10px'>Folder Schedules</div>"
+        folder_schedule_html += "<div style='display:flex;flex-direction:column;gap:8px'>"
+        
+        for folder_config in CONFIG["SOURCE_DIRS"]:
+            folder_path = folder_config["path"]
+            folder_name = folder_config["name"]
+            next_scan = get_next_scan_time(folder_path)
+            interval = folder_config["scan_interval_minutes"]
+            
+            status_color = "#4dabf7" if scan_schedule[folder_path]["status"] == "Scanning" else "#909296"
+            
+            folder_schedule_html += f"""
+            <div style='display:flex;justify-content:space-between;align-items:center;padding:8px;background:#2c2e33;border-radius:4px'>
+                <div style='flex:1'>
+                    <div style='color:#fff;font-size:0.9em'>{folder_name}</div>
+                    <div style='color:#606266;font-size:0.7em;margin-top:2px'>{folder_path}</div>
+                </div>
+                <div style='text-align:right'>
+                    <div style='color:{status_color};font-size:0.75em;font-weight:bold'>{scan_schedule[folder_path]["status"]}</div>
+                    <div style='color:#868e96;font-size:0.7em;margin-top:2px'>Every {interval}m | Next: {next_scan}</div>
+                </div>
+            </div>
+            """
+        
+        folder_schedule_html += "</div></div>"
     
     return f"""
     <!DOCTYPE html><html><head>
@@ -473,6 +590,7 @@ def dashboard():
             <div style="text-align:center"><span class="val">{s['gb_saved']:.1f}</span><br><span class="lbl">Savings</span></div>
         </div>
     </div>
+    {folder_schedule_html}
     <div class="log-container">{logs}</div>
     <script>
         var objDiv = document.querySelector(".log-container");
