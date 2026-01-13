@@ -1,0 +1,12 @@
+{
+    "SOURCE_DIRS": [
+        "/path/to/movies",
+        "/path/to/tv-shows"
+    ],
+    "TEMP_FOLDER": "watchdog_temp",
+    "STATS_FILE": "stats.json",
+    "LOG_FILE": "watchdog.log",
+    "OUTPUT_SUFFIX": ".hevc.mkv",
+    "PORT": 8085,
+    "KUMA_URL": ""
+}

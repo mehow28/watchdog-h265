@@ -1,0 +1,8 @@
+{
+    "SOURCE_DIRS": ["/films", "/tv"],
+    "STATS_FILE": "/config/stats.json",
+    "LOG_FILE": "/config/watchdog.log",
+    "TEMP_EXT": ".temp.mkv",
+    "PORT": 8085,
+    "KUMA_URL": ""
+}

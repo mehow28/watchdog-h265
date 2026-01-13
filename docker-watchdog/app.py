@@ -9,12 +9,29 @@ import sys
 from flask import Flask
 from watchdog_core import load_stats, save_stats, push_kuma, get_video_codec
 
-# --- KONFIGURACJA ---
-SOURCE_DIRS = ["/films", "/tv"]
-STATS_FILE = "/config/stats.json"
-LOG_FILE = "/config/watchdog.log"
-TEMP_EXT = ".temp.mkv"
-KUMA_URL = "[MY_KUMA_URL]/api/push/[KEY]}?status=up&msg=OK&ping="
+# --- DEFAULT CONFIGURATION ---
+DEFAULT_CONFIG = {
+    "SOURCE_DIRS": ["/films", "/tv"],
+    "STATS_FILE": "/config/stats.json",
+    "LOG_FILE": "/config/watchdog.log",
+    "TEMP_EXT": ".temp.mkv",
+    "PORT": 8085,
+    "KUMA_URL": ""
+}
+
+def load_config():
+    """Load config from /config/config.json or use defaults"""
+    config_path = "/config/config.json"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding='utf-8') as f:
+                user_config = json.load(f)
+                return {**DEFAULT_CONFIG, **user_config}
+        except Exception as e:
+            print(f"Error loading {config_path}: {e}")
+    return DEFAULT_CONFIG
+
+CONFIG = load_config()
 
 # Setup Logging
 logger = logging.getLogger()
@@ -26,8 +43,10 @@ sh.setFormatter(formatter)
 logger.addHandler(sh)
 
 try:
-    if not os.path.exists("/config"): os.makedirs("/config")
-    fh = logging.FileHandler(LOG_FILE)
+    log_dir = os.path.dirname(CONFIG["LOG_FILE"])
+    if log_dir and not os.path.exists(log_dir): 
+        os.makedirs(log_dir)
+    fh = logging.FileHandler(CONFIG["LOG_FILE"])
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 except: pass
@@ -37,20 +56,20 @@ logging.getLogger('werkzeug').setLevel(logging.ERROR)
 state = {
     "status": "Inicjalizacja",
     "current_file": "Brak",
-    "stats": load_stats(STATS_FILE)
+    "stats": load_stats(CONFIG["STATS_FILE"])
 }
 
 app = Flask(__name__)
 
 def worker_loop():
-    logger.info("=== WATCHDOG V3.5 (DIAGNOSTIC) START ===")
+    logger.info("=== HEVC WATCHDOG DOCKER V1.0 START ===")
     
     while True:
         state['status'] = "Skanowanie..."
-        push_kuma(KUMA_URL)
+        push_kuma(CONFIG["KUMA_URL"])
         
         found_files = []
-        for root_dir in SOURCE_DIRS:
+        for root_dir in CONFIG["SOURCE_DIRS"]:
             if not os.path.exists(root_dir):
                 logger.error(f"DEBUG: Folder {root_dir} nie istnieje w kontenerze!")
                 continue
@@ -61,7 +80,7 @@ def worker_loop():
                 
                 for dirpath, _, filenames in os.walk(root_dir):
                     for f in filenames:
-                        if f.lower().endswith(('.mkv', '.mp4', '.avi')) and not f.endswith(TEMP_EXT):
+                        if f.lower().endswith(('.mkv', '.mp4', '.avi')) and not f.endswith(CONFIG["TEMP_EXT"]):
                             found_files.append(os.path.join(dirpath, f))
             except Exception as e:
                 logger.error(f"Blad skanowania {root_dir}: {e}")
@@ -83,7 +102,7 @@ def worker_loop():
             state['current_file'] = file_name
             logger.info(f"START: {file_name} ({codec})")
             
-            output_file = file_path + TEMP_EXT
+            output_file = file_path + CONFIG["TEMP_EXT"]
             cmd = ["ffmpeg", "-i", file_path, "-c:v", "libx265", "-crf", "26", "-preset", "medium", "-c:a", "copy", "-c:s", "copy", "-map", "0", "-y", output_file]
 
             try:
@@ -99,7 +118,7 @@ def worker_loop():
                         state['stats']['processed'] += 1
                         state['stats']['gb_proc'] += orig_s
                         state['stats']['gb_saved'] += (orig_s - new_s)
-                        save_stats(STATS_FILE, state['stats'])
+                        save_stats(CONFIG["STATS_FILE"], state['stats'])
                         logger.info(f"SUKCES: {file_name} (-{orig_s-new_s:.2f} GB)")
                     else:
                         os.remove(output_file)
@@ -107,7 +126,7 @@ def worker_loop():
             except Exception as e: logger.error(f"Wyjatek: {e}")
 
             state['current_file'] = "Brak"
-            push_kuma(KUMA_URL)
+            push_kuma(CONFIG["KUMA_URL"])
 
         state['status'] = "Czuwanie"
         time.sleep(60)
@@ -137,4 +156,4 @@ def dashboard():
 if __name__ == "__main__":
     t = threading.Thread(target=worker_loop, daemon=True)
     t.start()
-    app.run(host='0.0.0.0', port=8085)
+    app.run(host='0.0.0.0', port=CONFIG["PORT"])

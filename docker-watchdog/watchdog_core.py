@@ -3,6 +3,8 @@ import json
 import requests
 import subprocess
 import logging
+import platform
+import signal
 
 def load_stats(stats_file):
     stats = {"processed": 0, "gb_proc": 0.0, "gb_saved": 0.0}
@@ -29,16 +31,37 @@ def push_kuma(kuma_url):
             pass
 
 def get_video_codec(filepath):
+    """Get video codec using ffprobe (cross-platform)"""
     try:
-        cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", filepath]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15, creationflags=0x08000000)
+        cmd = ["ffprobe", "-v", "error", "-select_streams", "v:0", 
+               "-show_entries", "stream=codec_name", 
+               "-of", "default=noprint_wrappers=1:nokey=1", filepath]
+        
+        # Windows-specific flag to prevent console window
+        kwargs = {'stdout': subprocess.PIPE, 'stderr': subprocess.PIPE, 
+                  'text': True, 'timeout': 15}
+        if platform.system() == 'Windows':
+            kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
+        
+        result = subprocess.run(cmd, **kwargs)
         return result.stdout.strip()
     except:
         return None
 
 def kill_process_tree(pid):
+    """Kill process tree (cross-platform)"""
     try:
-        subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)], capture_output=True, creationflags=0x08000000)
+        system = platform.system()
+        if system == 'Windows':
+            subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)], 
+                          capture_output=True, creationflags=0x08000000)
+        else:
+            # Linux/Unix: use process group kill
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+            except:
+                # Fallback to single process kill
+                os.kill(pid, signal.SIGTERM)
     except:
         pass
 

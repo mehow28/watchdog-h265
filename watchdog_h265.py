@@ -7,6 +7,7 @@ import logging
 import requests
 import sys
 import shutil
+import platform
 from flask import Flask, redirect, url_for
 from watchdog_core import load_stats, save_stats, push_kuma, get_video_codec, kill_process_tree, get_last_logs
 
@@ -99,13 +100,24 @@ def worker_loop():
         if candidates: logger.info(f"Queue: {len(candidates)} files.")
 
         for file_path, codec in candidates:
+            # Check for skip before processing
+            if state['skip']:
+                state['skip'] = False
+                logger.info(f"Skipped file (queued): {os.path.basename(file_path)}")
+                continue
+            
             while state['paused']:
                 state['status'] = "PAUSED"
                 state['current_file'] = "Waiting..."
                 time.sleep(2)
+                # Allow skip during pause
+                if state['skip']:
+                    state['skip'] = False
+                    logger.info(f"Skipped file (paused): {os.path.basename(file_path)}")
+                    break
             
-            if state['skip']:
-                state['skip'] = False
+            # If skipped during pause, continue to next file  
+            if not state['paused'] and state.get('skip'):
                 continue
 
             file_name = os.path.basename(file_path)
@@ -130,20 +142,43 @@ def worker_loop():
             ]
 
             try:
-                process = subprocess.Popen(
-                    cmd, 
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT, 
-                    text=True, 
-                    encoding='utf-8',
-                    errors='replace',
-                    creationflags=0x08000000
-                )
+                # Ensure temp file doesn't exist from previous failed run
+                if os.path.exists(output_file):
+                    logger.warning(f"Removing stale temp file: {output_file}")
+                    os.remove(output_file)
+                
+                # Cross-platform subprocess
+                popen_kwargs = {
+                    'stdout': subprocess.PIPE,
+                    'stderr': subprocess.STDOUT,
+                    'text': True,
+                    'encoding': 'utf-8',
+                    'errors': 'replace'
+                }
+                if platform.system() == 'Windows':
+                    popen_kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
+                else:
+                    # Linux: create new process group for easier cleanup
+                    if hasattr(os, 'setpgrp'):
+                        popen_kwargs['preexec_fn'] = os.setpgrp
+                
+                process = subprocess.Popen(cmd, **popen_kwargs)
                 
                 was_interrupted = False
+                was_skipped = False
+                
                 for line in process.stdout:
-                    if state['skip'] or state['paused']:
-                        logger.info(f"Forcing FFmpeg stop (PID: {process.pid})...")
+                    # Check for skip/pause during transcoding
+                    if state['skip']:
+                        logger.info(f"Skip requested - stopping FFmpeg (PID: {process.pid})...")
+                        kill_process_tree(process.pid)
+                        was_interrupted = True
+                        was_skipped = True
+                        state['skip'] = False
+                        break
+                    
+                    if state['paused']:
+                        logger.info(f"Pause requested - stopping FFmpeg (PID: {process.pid})...")
                         kill_process_tree(process.pid)
                         was_interrupted = True
                         break
@@ -159,14 +194,16 @@ def worker_loop():
                 process.wait() # Wait for the process to complete
                 
                 if was_interrupted:
-                    if os.path.exists(output_file): os.remove(output_file)
-                    if state['skip']:
-                        state['skip'] = False
+                    # Clean up temp file
+                    if os.path.exists(output_file): 
+                        os.remove(output_file)
+                    
+                    if was_skipped:
                         logger.info(f"Skipped file: {file_name}")
-                        continue
+                        continue  # Move to next file
                     else:
-                        logger.info(f"Paused on file: {file_name}")
-                        break 
+                        logger.info(f"Paused - will resume on: {file_name}")
+                        break  # Break from candidates loop, will retry this file later
 
                 if process.returncode == 0 and os.path.exists(output_file):
                     orig_s = os.path.getsize(file_path) / (1024**3)
@@ -279,7 +316,7 @@ def dashboard():
         var objDiv = document.querySelector(".log-container");
         if(objDiv) objDiv.scrollTop = objDiv.scrollHeight;
     </script>
-    </body></html>"
+    </body></html>"""
 
 @app.route('/toggle_pause')
 def toggle_pause():
@@ -294,4 +331,4 @@ def skip():
 if __name__ == "__main__":
     t = threading.Thread(target=worker_loop, daemon=True)
     t.start()
-    app.run(host='0.0.0.0', port=CONFIG["PORT"])"""
+    app.run(host='0.0.0.0', port=CONFIG["PORT"])
