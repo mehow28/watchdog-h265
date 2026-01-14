@@ -15,6 +15,23 @@
 
 HEVC Watchdog is a "set-and-forget" background service designed for home servers and NAS enthusiasts. It monitors your media folders and automatically transcodes files to H.265 to save up to 50-70% of disk space.
 
+### ⚠️ Important Quality Notice
+
+**This tool prioritizes automation and space savings over maximum quality.** Default settings:
+- **CRF 26** - Good balance, but not cinema-grade
+- **Preset "slow"** - Better quality than "medium", still reasonable encoding time
+- **constrained-intra** - Minimizes re-encoding artifacts
+- **Smart codec detection** - Skips AV1, VP9, and existing HEVC files
+
+**Who should NOT use this:**
+- Archivists wanting lossless/near-lossless quality
+- Sources already in efficient codecs (AV1, VP9, high-CRF H.264)
+- Users wanting frame-perfect encode analysis
+
+**Better alternatives for quality-focused workflows:** [Tdarr](https://tdarr.io/), [FileFlows](https://fileflows.com/)
+
+See [CONFIG.md](CONFIG.md) for customizing quality settings.
+
 ### Features
 *   **Automatic Transcoding:** Detects files requiring optimization and processes them in a sorted queue.
 *   **Web Dashboard:** Real-time UI (default port 8085) with logs and storage savings stats - great to make into a Homarr IFrame widget.
@@ -128,6 +145,23 @@ MIT License - see [LICENSE](LICENSE) file for details
 **Automatyczna optymalizacja biblioteki wideo do standardu H.265 (HEVC).**
 
 HEVC Watchdog to inteligentna usługa działająca w tle, stworzona dla serwerów domowych i użytkowników NAS. Monitoruje foldery z mediami i automatycznie konwertuje pliki do formatu H.265, oszczędzając od 50% do 70% miejsca na dysku.
+
+### ⚠️ Ważna Uwaga o Jakości
+
+**To narzędzie priorytetyzuje automatyzację i oszczędność miejsca nad maksymalną jakość.** Domyślne ustawienia:
+- **CRF 26** - Dobry balans, ale nie jakość kinowa
+- **Preset "slow"** - Lepsza jakość niż "medium", rozsądny czas encodowania
+- **constrained-intra** - Minimalizuje artefakty przy re-encodingu
+- **Inteligentna detekcja** - Pomija pliki AV1, VP9 i już istniejące HEVC
+
+**Kto NIE powinien używać:**
+- Archiwiści chcący jakości lossless/near-lossless
+- Źródła już w efektywnych kodekach (AV1, VP9, wysokie CRF H.264)
+- Użytkownicy wymagający klatka-po-klatce analizy
+
+**Lepsze alternatywy dla jakości:** [Tdarr](https://tdarr.io/), [FileFlows](https://fileflows.com/)
+
+Zobacz [CONFIG.md](CONFIG.md) aby dostosować ustawienia jakości.
 
 ### Funkcje
 *   **Automatyczna konwersja:** Wykrywa pliki wymagające optymalizacji i przetwarza je w kolejce.

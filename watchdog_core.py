@@ -98,33 +98,47 @@ def estimate_hevc_size(filepath, codec):
     Estimate potential file size after HEVC conversion.
     Returns (estimated_size_gb, worth_converting: bool)
     
-    Rough estimates based on codec:
-    - h264/avc: ~50% compression
-    - mpeg4/xvid: ~60% compression  
-    - mpeg2: ~70% compression
-    - others: ~50% compression
+    Compression ratios based on real-world testing:
+    - Modern codecs (AV1, VP9, HEVC) = DON'T convert (already efficient or better)
+    - Old codecs (MPEG2, VC1) = Large savings
+    - H.264 = Moderate savings (depends on source quality)
+    
+    Note: Ratios assume CRF 26 output. High-CRF sources (28+) may not save space.
     """
     try:
         original_size = os.path.getsize(filepath) / (1024**3)  # GB
         
-        # Compression ratios (how much smaller HEVC will be)
+        # Compression ratios (estimated output size as % of input)
+        # Values >1.0 = conversion would increase size (skip these!)
         compression_ratios = {
-            'h264': 0.50,
-            'avc': 0.50,
-            'mpeg4': 0.60,
-            'xvid': 0.60,
-            'mpeg2': 0.70,
-            'vc1': 0.55,
-            'vp8': 0.55,
-            'vp9': 0.45
+            # Already efficient - DON'T convert
+            'hevc': 1.00,       # Already HEVC
+            'h265': 1.00,       # Already HEVC
+            'av1': 1.15,        # AV1 better than HEVC - conversion = worse quality + bigger
+            'vp9': 0.95,        # VP9 comparable to HEVC - minimal benefit
+            
+            # Old/inefficient - GOOD candidates
+            'mpeg2': 0.25,      # DVD/old broadcasts - huge savings
+            'mpeg4': 0.50,      # DivX/XviD era
+            'xvid': 0.50,
+            'vc1': 0.50,        # WMV/VC-1 (Blu-ray, old Xbox)
+            'vp8': 0.60,        # Old YouTube
+            
+            # H.264 - depends on source quality (conservative estimate)
+            'h264': 0.55,       # Assumes decent quality source (CRF 18-23)
+            'avc': 0.55,        # High-CRF H.264 (28+) may not save space!
         }
         
-        ratio = compression_ratios.get(codec.lower(), 0.50)
+        ratio = compression_ratios.get(codec.lower(), 0.60)  # Conservative default
         estimated_size = original_size * ratio
         
-        # Only worth converting if we save at least 500 MB
-        min_savings = 0.5  # GB
+        # Only worth converting if we save at least MIN_SAVINGS_GB
+        min_savings = 0.5  # GB (configurable via CONFIG)
         potential_savings = original_size - estimated_size
+        
+        # Don't convert if ratio >= 0.95 (less than 5% savings)
+        if ratio >= 0.95:
+            return estimated_size, False
         
         return estimated_size, potential_savings >= min_savings
         

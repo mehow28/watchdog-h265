@@ -13,5 +13,11 @@
     ],
     "LANGUAGE": "EN",
     "MIN_SAVINGS_GB": 0.5,
-    "PORT": 8085
+    "PORT": 8085,
+    "ENCODE_SETTINGS": {
+        "codec": "libx265",
+        "crf": 24,
+        "preset": "slower",
+        "x265_params": "constrained-intra=1:aq-mode=3"
+    }
 }

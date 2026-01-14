@@ -61,7 +61,15 @@ DEFAULT_CONFIG = {
     "MIN_SAVINGS_GB": 0.5,
     "LANGUAGE": "PL",
     "SCAN_INTERVAL_MINUTES": 60,
-    "PARALLEL_PROCESSING": False
+    "PARALLEL_PROCESSING": False,
+    
+    # Encoding settings (advanced)
+    "ENCODE_SETTINGS": {
+        "codec": "libx265",
+        "crf": 26,
+        "preset": "slow",  # slow/slower for better quality (we have time!)
+        "x265_params": "constrained-intra=1"  # Better re-encoding quality
+    }
 }
 
 def normalize_source_dirs(source_dirs, default_interval):
@@ -97,24 +105,49 @@ def normalize_source_dirs(source_dirs, default_interval):
     return normalized
 
 def load_config():
+    config = DEFAULT_CONFIG.copy()
+    
+    # Load from config.json if exists
     if os.path.exists("config.json"):
         try:
             with open("config.json", "r", encoding='utf-8') as f:
                 user_config = json.load(f)
-                config = {**DEFAULT_CONFIG, **user_config}
                 
-                # Normalize SOURCE_DIRS to new format
-                if "SOURCE_DIRS" in config:
-                    default_interval = config.get("SCAN_INTERVAL_MINUTES", 60)
-                    config["SOURCE_DIRS"] = normalize_source_dirs(
-                        config["SOURCE_DIRS"], 
-                        default_interval
-                    )
+                # Deep merge for ENCODE_SETTINGS
+                if "ENCODE_SETTINGS" in user_config:
+                    config["ENCODE_SETTINGS"] = {**DEFAULT_CONFIG["ENCODE_SETTINGS"], **user_config["ENCODE_SETTINGS"]}
+                    del user_config["ENCODE_SETTINGS"]
                 
-                return config
+                config = {**config, **user_config}
         except Exception as e:
             print(f"Error loading config.json: {e}")
-    return DEFAULT_CONFIG
+    
+    # Override with Docker ENV variables (for docker-compose)
+    hevc_crf = os.getenv("HEVC_CRF")
+    if hevc_crf:
+        config["ENCODE_SETTINGS"]["crf"] = int(hevc_crf)
+    
+    hevc_preset = os.getenv("HEVC_PRESET")
+    if hevc_preset:
+        config["ENCODE_SETTINGS"]["preset"] = hevc_preset
+    
+    hevc_params = os.getenv("HEVC_X265_PARAMS")
+    if hevc_params:
+        config["ENCODE_SETTINGS"]["x265_params"] = hevc_params
+    
+    min_savings = os.getenv("MIN_SAVINGS_GB")
+    if min_savings:
+        config["MIN_SAVINGS_GB"] = float(min_savings)
+    
+    # Normalize SOURCE_DIRS to new format
+    if "SOURCE_DIRS" in config:
+        default_interval = config.get("SCAN_INTERVAL_MINUTES", 60)
+        config["SOURCE_DIRS"] = normalize_source_dirs(
+            config["SOURCE_DIRS"], 
+            default_interval
+        )
+    
+    return config
 
 CONFIG = load_config()
 
@@ -240,13 +273,22 @@ def scan_folder(folder_path):
             continue
         
         codec = get_video_codec(vid)
-        if codec and codec not in ['hevc', 'h265']:
+        
+        # Skip if already in efficient codec
+        if codec and codec.lower() in ['hevc', 'h265', 'av1']:
+            logger.info(f"SKIP (already {codec.upper()}): {os.path.basename(vid)} - modern codec, no benefit")
+            state['processed_files'].add(vid)
+            save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
+            continue
+        
+        if codec:
             # Estimate if conversion is worth it
             estimated_size, worth_it = estimate_hevc_size(vid, codec)
             if worth_it:
                 candidates.append((vid, codec, estimated_size))
             else:
-                logger.info(f"SKIP (too small savings): {os.path.basename(vid)} - estimated savings < {CONFIG['MIN_SAVINGS_GB']} GB")
+                reason = "already efficient codec" if codec.lower() == 'vp9' else f"estimated savings < {CONFIG['MIN_SAVINGS_GB']} GB"
+                logger.info(f"SKIP ({codec.upper()}): {os.path.basename(vid)} - {reason}")
                 # Mark as processed so we don't check again
                 state['processed_files'].add(vid)
                 save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
@@ -370,13 +412,24 @@ def worker_loop():
             
             output_file = os.path.join(CONFIG["TEMP_FOLDER"], file_name + CONFIG["OUTPUT_SUFFIX"])
             
+            # Build FFmpeg command from config
+            enc = CONFIG["ENCODE_SETTINGS"]
             cmd = [
                 "ffmpeg", "-i", file_path,
-                "-c:v", "libx265", "-crf", "26", "-preset", "medium",
+                "-c:v", enc["codec"],
+                "-crf", str(enc["crf"]),
+                "-preset", enc["preset"],
                 "-c:a", "copy", "-c:s", "copy", "-map", "0",
                 "-max_muxing_queue_size", "1024",
                 "-y", output_file
             ]
+            
+            # Add x265-specific params if specified
+            if enc.get("x265_params"):
+                cmd.insert(-2, "-x265-params")
+                cmd.insert(-2, enc["x265_params"])
+            
+            logger.info(f"Encoding with: CRF={enc['crf']}, Preset={enc['preset']}, Params={enc.get('x265_params', 'none')}")
 
             try:
                 # Ensure temp file doesn't exist from previous failed run

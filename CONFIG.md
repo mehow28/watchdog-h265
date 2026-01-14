@@ -124,6 +124,61 @@ Dashboard will be at http://localhost:9000
 
 ---
 
+#### `ENCODE_SETTINGS`
+**Type:** Object  
+**Default:** 
+```json
+{
+    "codec": "libx265",
+    "crf": 26,
+    "preset": "slow",
+    "x265_params": "constrained-intra=1"
+}
+```
+**Description:** Advanced FFmpeg encoding settings
+
+**Sub-options:**
+- `codec` (string): Video codec to use (default: `"libx265"`)
+- `crf` (integer): Constant Rate Factor - lower = better quality, larger file (default: `26`)
+  - **18-22**: High quality (large files)
+  - **23-26**: Good balance (recommended)
+  - **27-32**: Lower quality (smaller files)
+- `preset` (string): Encoding speed vs efficiency (default: `"slow"`)
+  - **ultrafast/superfast/veryfast/faster/fast**: Quick but less efficient
+  - **medium**: Default FFmpeg preset
+  - **slow/slower**: Better quality, longer encoding (recommended for automation)
+  - **veryslow**: Best quality, very long encoding
+- `x265_params` (string): Additional x265 parameters
+  - `constrained-intra=1`: Recommended for re-encoding (minimizes error amplification)
+  - Can chain multiple: `"constrained-intra=1:aq-mode=3"`
+
+**Example - High Quality:**
+```json
+"ENCODE_SETTINGS": {
+    "crf": 22,
+    "preset": "slower",
+    "x265_params": "constrained-intra=1:aq-mode=3"
+}
+```
+
+**Example - Fast Encoding:**
+```json
+"ENCODE_SETTINGS": {
+    "crf": 28,
+    "preset": "fast"
+}
+```
+
+**Docker ENV override:**
+```yaml
+environment:
+  - HEVC_CRF=24
+  - HEVC_PRESET=slower
+  - HEVC_X265_PARAMS=constrained-intra=1:aq-mode=3
+```
+
+---
+
 #### `TEMP_FOLDER`
 **Type:** String  
 **Default:** `"watchdog_temp"`  
