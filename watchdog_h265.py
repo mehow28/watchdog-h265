@@ -655,11 +655,11 @@ def dashboard():
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
     body{{background:#1a1b1e;color:#fff;font-family:sans-serif;margin:0;padding:10px;height:100vh;display:flex;flex-direction:column;box-sizing:border-box}}
-    .card{{background:#25262b;border:1px solid #373a40;border-radius:8px;padding:15px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;position:relative}}
-    .info-section{{display:flex;align-items:center;gap:20px}}
-    .status-group{{display:flex;flex-direction:column}}
+    .card{{background:#25262b;border:1px solid #373a40;border-radius:8px;padding:15px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;position:relative;gap:15px}}
+    .info-section{{display:flex;align-items:center;gap:20px;flex:1;min-width:0}}
+    .status-group{{display:flex;flex-direction:column;flex:1;min-width:0}}
     .status{{color:#4dabf7;font-weight:bold;text-transform:uppercase;font-size:1.1em;line-height:1}}
-    .file{{color:#909296;font-size:0.75em;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}}
+    .file{{color:#909296;font-size:0.75em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}}
     .val{{color:#69db7c;font-weight:bold;font-size:1.2em}}
     .lbl{{color:#868e96;font-size:0.7em;text-transform:uppercase}}
     .controls{{display:flex;gap:8px}}
@@ -708,15 +708,15 @@ def dashboard():
             <div class="status-group">
                 <div class="status">{state['status']}</div>
                 <div class="file">{state['current_file']}</div>
-                {'<div class="file" style="color:#fcc419;margin-top:2px"><i class="fa-solid fa-clock"></i> ETA: ' + format_time_remaining() + '</div>' if state['processing_active'] else ''}
-                {'<div class="file" style="color:#868e96;margin-top:2px;font-size:0.7em"><i class="fa-solid fa-cog"></i> ' + settings_display + '</div>' if state['processing_active'] else ''}
+                {'<div class="file"><i class="fa-solid fa-clock"></i> ETA: ' + format_time_remaining() + '</div>' if state['processing_active'] else ''}
+                {'<div class="file"><i class="fa-solid fa-cog"></i> ' + settings_display + '</div>' if state['processing_active'] else ''}
             </div>
             <div class="controls">
                 <a href="/toggle_pause" class="btn btn-pause" title="Pause/Start"><i class="fa-solid {pause_icon}"></i></a>
                 <a href="javascript:void(0)" class="btn" title="Skip current file" onclick="document.getElementById('confirmModal').style.display='flex'"><i class="fa-solid fa-forward-step"></i></a>
             </div>
         </div>
-        <div style="display:flex;gap:20px">
+        <div style="display:flex;gap:20px;flex-shrink:0">
             <div style="text-align:center"><span class="val">{s['processed']}</span><br><span class="lbl">Files</span></div>
             <div style="text-align:center"><span class="val">{s['gb_proc']:.1f}</span><br><span class="lbl">GB Proc</span></div>
             <div style="text-align:center"><span class="val">{s['gb_saved']:.1f}</span><br><span class="lbl">Savings</span></div>
