@@ -564,8 +564,28 @@ def worker_loop():
                     new_s = os.path.getsize(output_file) / (1024**3)
                     
                     if new_s < orig_s:
-                        os.remove(file_path)
-                        shutil.move(output_file, file_path)
+                        # Atomic file replacement to prevent corruption
+                        # 1. Move new file to temp name in same directory
+                        temp_replace = file_path + ".tmp_replace"
+                        try:
+                            shutil.move(output_file, temp_replace)
+                            # 2. Atomic replace (overwrites original safely)
+                            os.replace(temp_replace, file_path)
+                            logger.info(f"File replaced atomically: {file_name}")
+                        except Exception as e:
+                            # If atomic replace fails, fall back to old method with backup
+                            logger.warning(f"Atomic replace failed, using backup method: {e}")
+                            backup_path = file_path + ".backup"
+                            try:
+                                shutil.move(file_path, backup_path)
+                                shutil.move(output_file, file_path)
+                                os.remove(backup_path)
+                            except Exception as e2:
+                                logger.error(f"File replacement failed critically: {e2}")
+                                # Restore backup if it exists
+                                if os.path.exists(backup_path):
+                                    shutil.move(backup_path, file_path)
+                                raise
                         
                         # Add to processed files list
                         state['processed_files'].add(file_path)
