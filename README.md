@@ -1,6 +1,6 @@
 # HEVC Watchdog
 
-<img width="725" height="352" alt="obraz" src="https://github.com/user-attachments/assets/4cb6e478-d8fa-4192-9c1b-6acb66541731" />
+<img width="734" height="542" alt="image" src="https://github.com/user-attachments/assets/ec144e20-8e70-4049-ab71-93fa65beabc3" />
 
 (localhost:8085) -> Homar iFrame widget)
 
