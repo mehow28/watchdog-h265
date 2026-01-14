@@ -14,6 +14,8 @@ from watchdog_core import (load_stats, save_stats, push_kuma, get_video_codec,
                            kill_process_tree, get_last_logs, load_processed_files, 
                            save_processed_files, estimate_hevc_size)
 
+__version__ = "2.1.0"
+
 # --- STRINGS / TRANSLATIONS ---
 STRINGS = {
     "EN": {

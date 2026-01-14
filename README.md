@@ -1,5 +1,8 @@
 # HEVC Watchdog
 
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 <img width="734" height="542" alt="image" src="https://github.com/user-attachments/assets/ec144e20-8e70-4049-ab71-93fa65beabc3" />
 
 (localhost:8085) -> Homar iFrame widget)
@@ -14,6 +17,14 @@
 **Automated video library optimization to H.265 (HEVC) standard.**
 
 HEVC Watchdog is a "set-and-forget" background service designed for home servers and NAS enthusiasts. It monitors your media folders and automatically transcodes files to H.265 to save up to 50-70% of disk space.
+
+### 🆕 Recent Updates (v2.1.0)
+- **🛡️ Data Safety:** Atomic file replacement prevents corruption during power loss or crashes
+- **🎮 GPU Encoding:** NVIDIA NVENC, Intel QSV, AMD AMF support (10x faster!)
+- **📊 Skip Statistics:** Dashboard now shows skipped files and reasons
+- **🔧 Audit Tools:** Scripts to detect corrupted MKV files (`audit_corrupted.sh`, `audit_corrupted.ps1`)
+
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ### ⚠️ Important Quality Notice
 
@@ -34,11 +45,14 @@ See [CONFIG.md](CONFIG.md) for customizing quality settings.
 
 ### Features
 *   **Automatic Transcoding:** Detects files requiring optimization and processes them in a sorted queue.
-*   **Web Dashboard:** Real-time UI (default port 8085) with logs and storage savings stats - great to make into a Homarr IFrame widget.
+*   **Atomic File Operations:** Safe file replacement prevents data corruption during failures.
+*   **Web Dashboard:** Real-time UI (default port 8085) with logs, storage savings, and skip statistics - great to make into a Homarr IFrame widget.
 *   **Controls:** Controls to **Pause/Play** or **Skip** the current file.
+*   **GPU Acceleration:** NVIDIA NVENC, Intel QSV, AMD AMF support for 10x faster encoding.
 *   **Monitoring:** Built-in support for Uptime Kuma.
 *   **Cross-Platform:** Works on Windows, Linux, and macOS.
 *   **Docker Support:** Containerized version available for easy deployment.
+*   **Audit Tools:** Detect corrupted video files with included scripts.
 
 ### Requirements
 *   **Python:** 3.7 or higher
@@ -134,6 +148,13 @@ Edit `config.json` (or `docker-watchdog/data/config.json` for Docker):
 *   Verify `SOURCE_DIRS` paths are correct
 *   Ensure files don't already have `OUTPUT_SUFFIX` in filename
 
+**Corrupted video files detected:**
+*   Use included audit tools to scan your library:
+    *   **Linux/macOS:** `bash audit_corrupted.sh`
+    *   **Windows:** `powershell -ExecutionPolicy Bypass -File audit_corrupted.ps1`
+*   These scripts use FFprobe to detect invalid Matroska headers and incomplete files
+*   Results are exported to `corrupted_files_report.txt` with episode numbers for re-download
+
 ### License
 MIT License - see [LICENSE](LICENSE) file for details
 
@@ -145,6 +166,14 @@ MIT License - see [LICENSE](LICENSE) file for details
 **Automatyczna optymalizacja biblioteki wideo do standardu H.265 (HEVC).**
 
 HEVC Watchdog to inteligentna usługa działająca w tle, stworzona dla serwerów domowych i użytkowników NAS. Monitoruje foldery z mediami i automatycznie konwertuje pliki do formatu H.265, oszczędzając od 50% do 70% miejsca na dysku.
+
+### 🆕 Ostatnie Aktualizacje (v2.1.0)
+- **🛡️ Bezpieczeństwo Danych:** Atomowa zamiana plików zapobiega uszkodzeniom przy awarii prądu lub crashu
+- **🎮 Enkodowanie GPU:** Wsparcie NVIDIA NVENC, Intel QSV, AMD AMF (10x szybsze!)
+- **📊 Statystyki Pominiętych:** Dashboard pokazuje pominięte pliki i powody
+- **🔧 Narzędzia Audytu:** Skrypty do wykrywania uszkodzonych plików MKV (`audit_corrupted.sh`, `audit_corrupted.ps1`)
+
+Zobacz [CHANGELOG.md](CHANGELOG.md) dla pełnej historii wersji.
 
 ### ⚠️ Ważna Uwaga o Jakości
 
@@ -165,11 +194,14 @@ Zobacz [CONFIG.md](CONFIG.md) aby dostosować ustawienia jakości.
 
 ### Funkcje
 *   **Automatyczna konwersja:** Wykrywa pliki wymagające optymalizacji i przetwarza je w kolejce.
-*   **Dashboard WWW:** Interfejs w czasie rzeczywistym z logami i statystykami oszczędności - w sam raz na widget IFrame do Homarr.
+*   **Atomowe Operacje:** Bezpieczna zamiana plików zapobiega utracie danych przy awariach.
+*   **Dashboard WWW:** Interfejs w czasie rzeczywistym z logami, statystykami oszczędności i pominięć - w sam raz na widget IFrame do Homarr.
 *   **Kontrolki:** Przyciski **Pauza/Play** oraz **Pomiń (Skip)** obecny plik.
+*   **Akceleracja GPU:** Wsparcie NVIDIA NVENC, Intel QSV, AMD AMF dla 10x szybszego enkodowania.
 *   **Monitoring:** Wsparcie dla powiadomień Uptime Kuma.
 *   **Wieloplatformowość:** Działa na Windows, Linux i macOS.
 *   **Wsparcie Docker:** Dostępna wersja kontenerowa dla łatwego wdrożenia.
+*   **Narzędzia Audytu:** Wykrywanie uszkodzonych plików wideo za pomocą dołączonych skryptów.
 
 ### Wymagania
 *   **Python:** 3.7 lub wyższy
@@ -264,6 +296,13 @@ Edytuj `config.json` (lub `docker-watchdog/data/config.json` dla Dockera):
 *   Sprawdź logi w dashboardzie lub `watchdog.log`
 *   Zweryfikuj czy ścieżki `SOURCE_DIRS` są poprawne
 *   Upewnij się, że pliki nie mają już `OUTPUT_SUFFIX` w nazwie
+
+**Wykryto uszkodzone pliki wideo:**
+*   Użyj dołączonych narzędzi audytu do przeskanowania biblioteki:
+    *   **Linux/macOS:** `bash audit_corrupted.sh`
+    *   **Windows:** `powershell -ExecutionPolicy Bypass -File audit_corrupted.ps1`
+*   Skrypty używają FFprobe do wykrywania nieprawidłowych nagłówków Matroska i niekompletnych plików
+*   Wyniki są eksportowane do `corrupted_files_report.txt` z numerami odcinków do ponownego pobrania
 
 ### Licencja
 Licencja MIT - szczegóły w pliku [LICENSE](LICENSE)
