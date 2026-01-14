@@ -65,10 +65,11 @@ DEFAULT_CONFIG = {
     
     # Encoding settings (advanced)
     "ENCODE_SETTINGS": {
-        "codec": "libx265",
-        "crf": 26,
-        "preset": "slow",  # slow/slower for better quality (we have time!)
-        "x265_params": "constrained-intra=1"  # Better re-encoding quality
+        "codec": "libx265",        # libx265 (CPU) or hevc_nvenc (NVIDIA GPU)
+        "crf": 26,                 # Quality: 18-22=high, 23-26=balanced, 27-32=lower
+        "preset": "slow",          # CPU: slow/slower, GPU: p1-p7
+        "x265_params": "constrained-intra=1",  # CPU only: re-encoding safety
+        "gpu_device": 0            # GPU device ID (for multi-GPU systems)
     }
 }
 
@@ -273,10 +274,27 @@ def scan_folder(folder_path):
             continue
         
         codec = get_video_codec(vid)
+        file_size_gb = os.path.getsize(vid) / (1024**3)
         
         # Skip if already in efficient codec
         if codec and codec.lower() in ['hevc', 'h265', 'av1']:
-            logger.info(f"SKIP (already {codec.upper()}): {os.path.basename(vid)} - modern codec, no benefit")
+            # Detailed skip logging
+            skip_type = codec.lower()
+            if skip_type in ['h265', 'hevc']:
+                skip_type = 'hevc'
+                reason_detail = "already optimal format"
+            elif skip_type == 'av1':
+                reason_detail = "better than HEVC, no conversion benefit"
+            
+            logger.info(f"SKIP ({codec.upper()}): {os.path.basename(vid)} - {file_size_gb:.1f}GB, {reason_detail}")
+            
+            # Track skip statistics
+            state['stats']['files_skipped'] += 1
+            state['stats']['gb_skipped'] += file_size_gb
+            if skip_type in state['stats']['skip_reasons']:
+                state['stats']['skip_reasons'][skip_type] += 1
+            save_stats(CONFIG["STATS_FILE"], state['stats'])
+            
             state['processed_files'].add(vid)
             save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
             continue
@@ -287,8 +305,24 @@ def scan_folder(folder_path):
             if worth_it:
                 candidates.append((vid, codec, estimated_size))
             else:
-                reason = "already efficient codec" if codec.lower() == 'vp9' else f"estimated savings < {CONFIG['MIN_SAVINGS_GB']} GB"
-                logger.info(f"SKIP ({codec.upper()}): {os.path.basename(vid)} - {reason}")
+                # Detailed skip logging with reasons
+                if codec.lower() == 'vp9':
+                    reason_detail = "efficient codec, minimal benefit from HEVC conversion"
+                    skip_type = 'vp9'
+                else:
+                    savings_gb = file_size_gb - estimated_size
+                    reason_detail = f"estimated savings {savings_gb:.2f}GB < {CONFIG['MIN_SAVINGS_GB']}GB threshold"
+                    skip_type = 'too_small'
+                
+                logger.info(f"SKIP ({codec.upper()}): {os.path.basename(vid)} - {file_size_gb:.1f}GB, {reason_detail}")
+                
+                # Track skip statistics
+                state['stats']['files_skipped'] += 1
+                state['stats']['gb_skipped'] += file_size_gb
+                if skip_type in state['stats']['skip_reasons']:
+                    state['stats']['skip_reasons'][skip_type] += 1
+                save_stats(CONFIG["STATS_FILE"], state['stats'])
+                
                 # Mark as processed so we don't check again
                 state['processed_files'].add(vid)
                 save_processed_files(CONFIG["PROCESSED_FILES"], state['processed_files'])
@@ -414,22 +448,52 @@ def worker_loop():
             
             # Build FFmpeg command from config
             enc = CONFIG["ENCODE_SETTINGS"]
+            codec = enc["codec"]
+            is_gpu = "nvenc" in codec or "qsv" in codec or "amf" in codec
+            
             cmd = [
                 "ffmpeg", "-i", file_path,
-                "-c:v", enc["codec"],
-                "-crf", str(enc["crf"]),
-                "-preset", enc["preset"],
-                "-c:a", "copy", "-c:s", "copy", "-map", "0",
-                "-max_muxing_queue_size", "1024",
-                "-y", output_file
+                "-c:v", codec,
             ]
             
-            # Add x265-specific params if specified
-            if enc.get("x265_params"):
-                cmd.insert(-2, "-x265-params")
-                cmd.insert(-2, enc["x265_params"])
+            # GPU encoders use different parameter names
+            if is_gpu:
+                # GPU encoding (NVIDIA/Intel/AMD)
+                if "nvenc" in codec:
+                    # NVIDIA NVENC
+                    cmd.extend(["-cq", str(enc["crf"])])  # CQ for NVENC
+                    cmd.extend(["-preset", enc["preset"]])  # p1-p7 for NVENC
+                    if enc.get("gpu_device") is not None:
+                        cmd.extend(["-gpu", str(enc["gpu_device"])])
+                elif "qsv" in codec:
+                    # Intel Quick Sync
+                    cmd.extend(["-global_quality", str(enc["crf"])])
+                    cmd.extend(["-preset", enc["preset"]])
+                elif "amf" in codec:
+                    # AMD AMF
+                    cmd.extend(["-qp", str(enc["crf"])])
+                    cmd.extend(["-quality", enc["preset"]])
+            else:
+                # CPU encoding (libx265/libx264)
+                cmd.extend(["-crf", str(enc["crf"])])
+                cmd.extend(["-preset", enc["preset"]])
             
-            logger.info(f"Encoding with: CRF={enc['crf']}, Preset={enc['preset']}, Params={enc.get('x265_params', 'none')}")
+            # Common parameters
+            cmd.extend([
+                "-c:a", "copy", "-c:s", "copy", "-map", "0",
+                "-max_muxing_queue_size", "1024"
+            ])
+            
+            # Add x265-specific params if specified (CPU only)
+            if not is_gpu and enc.get("x265_params"):
+                cmd.extend(["-x265-params", enc["x265_params"]])
+            
+            cmd.extend(["-y", output_file])
+            
+            # Log encoding settings
+            encoder_type = "GPU" if is_gpu else "CPU"
+            params_info = enc.get('x265_params', 'none') if not is_gpu else 'GPU defaults'
+            logger.info(f"Encoding ({encoder_type}): {codec}, CRF={enc['crf']}, Preset={enc['preset']}, Params={params_info}")
 
             try:
                 # Ensure temp file doesn't exist from previous failed run
@@ -541,12 +605,26 @@ def dashboard():
     pause_icon = "fa-play" if state['paused'] else "fa-pause"
     pause_color = "#fcc419" if state['paused'] else "#fa5252"
     
-    # Build folder schedule HTML
+    # Encode settings summary
+    enc = CONFIG["ENCODE_SETTINGS"]
+    settings_display = f"CRF {enc['crf']} • {enc['preset'].title()}"
+    if enc.get('x265_params'):
+        if 'constrained-intra' in enc['x265_params']:
+            settings_display += " • CI"
+    
+    # Build folder schedule HTML with collapse button
     folder_schedule_html = ""
-    if len(CONFIG["SOURCE_DIRS"]) > 1:  # Only show if multiple folders
-        folder_schedule_html = "<div style='margin-top:10px;background:#25262b;border:1px solid #373a40;border-radius:8px;padding:15px'>"
-        folder_schedule_html += "<div style='color:#868e96;font-size:0.8em;text-transform:uppercase;margin-bottom:10px'>Folder Schedules</div>"
-        folder_schedule_html += "<div style='display:flex;flex-direction:column;gap:8px'>"
+    if len(CONFIG["SOURCE_DIRS"]) >= 1:  # Show even for single folder
+        folder_schedule_html = "<div id='folderScheduleContainer' style='margin-top:10px;background:#25262b;border:1px solid #373a40;border-radius:8px;padding:15px'>"
+        folder_schedule_html += """
+        <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px'>
+            <div style='color:#868e96;font-size:0.8em;text-transform:uppercase'>Folder Schedules</div>
+            <button onclick='toggleFolderSchedule()' style='background:#2c2e33;border:1px solid #373a40;color:#868e96;padding:4px 8px;border-radius:4px;cursor:pointer;font-size:0.7em;transition:all 0.2s' id='folderToggleBtn'>
+                <i class='fa-solid fa-chevron-up'></i> Hide
+            </button>
+        </div>
+        """
+        folder_schedule_html += "<div id='folderScheduleContent' style='display:flex;flex-direction:column;gap:8px'>"
         
         for folder_config in CONFIG["SOURCE_DIRS"]:
             folder_path = folder_config["path"]
@@ -631,6 +709,7 @@ def dashboard():
                 <div class="status">{state['status']}</div>
                 <div class="file">{state['current_file']}</div>
                 {'<div class="file" style="color:#fcc419;margin-top:2px"><i class="fa-solid fa-clock"></i> ETA: ' + format_time_remaining() + '</div>' if state['processing_active'] else ''}
+                {'<div class="file" style="color:#868e96;margin-top:2px;font-size:0.7em"><i class="fa-solid fa-cog"></i> ' + settings_display + '</div>' if state['processing_active'] else ''}
             </div>
             <div class="controls">
                 <a href="/toggle_pause" class="btn btn-pause" title="Pause/Start"><i class="fa-solid {pause_icon}"></i></a>
@@ -641,6 +720,7 @@ def dashboard():
             <div style="text-align:center"><span class="val">{s['processed']}</span><br><span class="lbl">Files</span></div>
             <div style="text-align:center"><span class="val">{s['gb_proc']:.1f}</span><br><span class="lbl">GB Proc</span></div>
             <div style="text-align:center"><span class="val">{s['gb_saved']:.1f}</span><br><span class="lbl">Savings</span></div>
+            <div style="text-align:center"><span class="val">{s.get('files_skipped', 0)}</span><br><span class="lbl">Skipped</span></div>
         </div>
     </div>
     {folder_schedule_html}
@@ -648,6 +728,33 @@ def dashboard():
     <script>
         var objDiv = document.querySelector(".log-container");
         if(objDiv) objDiv.scrollTop = objDiv.scrollHeight;
+        
+        // Toggle folder schedule visibility
+        function toggleFolderSchedule() {{
+            var content = document.getElementById('folderScheduleContent');
+            var btn = document.getElementById('folderToggleBtn');
+            var isHidden = content.style.display === 'none';
+            
+            if (isHidden) {{
+                content.style.display = 'flex';
+                btn.innerHTML = '<i class="fa-solid fa-chevron-up"></i> Hide';
+            }} else {{
+                content.style.display = 'none';
+                btn.innerHTML = '<i class="fa-solid fa-chevron-down"></i> Show';
+            }}
+            
+            // Save state to localStorage
+            localStorage.setItem('folderScheduleCollapsed', !isHidden);
+        }}
+        
+        // Restore collapse state on load
+        window.addEventListener('DOMContentLoaded', function() {{
+            var collapsed = localStorage.getItem('folderScheduleCollapsed') === 'true';
+            if (collapsed) {{
+                document.getElementById('folderScheduleContent').style.display = 'none';
+                document.getElementById('folderToggleBtn').innerHTML = '<i class="fa-solid fa-chevron-down"></i> Show';
+            }}
+        }});
     </script>
     </body></html>"""
 

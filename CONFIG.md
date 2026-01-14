@@ -132,38 +132,56 @@ Dashboard will be at http://localhost:9000
     "codec": "libx265",
     "crf": 26,
     "preset": "slow",
-    "x265_params": "constrained-intra=1"
+    "x265_params": "constrained-intra=1",
+    "gpu_device": 0
 }
 ```
 **Description:** Advanced FFmpeg encoding settings
 
 **Sub-options:**
-- `codec` (string): Video codec to use (default: `"libx265"`)
-- `crf` (integer): Constant Rate Factor - lower = better quality, larger file (default: `26`)
+- `codec` (string): Video codec to use
+  - **CPU:** `libx265` (HEVC), `libx264` (H.264)
+  - **GPU NVIDIA:** `hevc_nvenc`, `h264_nvenc`
+  - **GPU Intel:** `hevc_qsv`, `h264_qsv`
+  - **GPU AMD:** `hevc_amf`, `h264_amf`
+- `crf` (integer): Quality level (default: `26`)
   - **18-22**: High quality (large files)
   - **23-26**: Good balance (recommended)
   - **27-32**: Lower quality (smaller files)
-- `preset` (string): Encoding speed vs efficiency (default: `"slow"`)
-  - **ultrafast/superfast/veryfast/faster/fast**: Quick but less efficient
-  - **medium**: Default FFmpeg preset
-  - **slow/slower**: Better quality, longer encoding (recommended for automation)
-  - **veryslow**: Best quality, very long encoding
-- `x265_params` (string): Additional x265 parameters
+  - Note: GPU encoders use slightly different quality scales
+- `preset` (string): Encoding speed vs efficiency
+  - **CPU (libx265):** `ultrafast`, `superfast`, `veryfast`, `faster`, `fast`, `medium`, `slow`, `slower`, `veryslow`
+  - **GPU (NVENC):** `p1` (fastest) to `p7` (best quality)
+  - Default: `slow` (CPU) or `p6` (GPU)
+- `x265_params` (string): Additional x265 parameters (CPU only)
   - `constrained-intra=1`: Recommended for re-encoding (minimizes error amplification)
   - Can chain multiple: `"constrained-intra=1:aq-mode=3"`
+- `gpu_device` (integer): GPU device ID for multi-GPU systems (default: `0`)
 
-**Example - High Quality:**
+**Example - High Quality CPU:**
 ```json
 "ENCODE_SETTINGS": {
+    "codec": "libx265",
     "crf": 22,
     "preset": "slower",
     "x265_params": "constrained-intra=1:aq-mode=3"
 }
 ```
 
-**Example - Fast Encoding:**
+**Example - GPU Encoding (10x faster!):**
 ```json
 "ENCODE_SETTINGS": {
+    "codec": "hevc_nvenc",
+    "crf": 26,
+    "preset": "p6",
+    "gpu_device": 0
+}
+```
+
+**Example - Fast CPU Encoding:**
+```json
+"ENCODE_SETTINGS": {
+    "codec": "libx265",
     "crf": 28,
     "preset": "fast"
 }

@@ -7,11 +7,28 @@ import platform
 import signal
 
 def load_stats(stats_file):
-    stats = {"processed": 0, "gb_proc": 0.0, "gb_saved": 0.0}
+    stats = {
+        "processed": 0, 
+        "gb_proc": 0.0, 
+        "gb_saved": 0.0,
+        "files_skipped": 0,
+        "gb_skipped": 0.0,
+        "skip_reasons": {
+            "av1": 0,
+            "hevc": 0,
+            "vp9": 0,
+            "too_small": 0
+        }
+    }
     if os.path.exists(stats_file):
         try:
             with open(stats_file, 'r', encoding='utf-8') as f:
-                stats = json.load(f)
+                loaded = json.load(f)
+                # Merge with defaults (backward compatible)
+                stats.update(loaded)
+                # Ensure skip_reasons exists
+                if "skip_reasons" not in stats:
+                    stats["skip_reasons"] = {"av1": 0, "hevc": 0, "vp9": 0, "too_small": 0}
         except:
             pass
     return stats

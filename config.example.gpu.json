@@ -1,0 +1,15 @@
+{
+    "SOURCE_DIRS": [
+        "/path/to/movies",
+        "/path/to/tv-shows"
+    ],
+    "LANGUAGE": "EN",
+    "MIN_SAVINGS_GB": 0.5,
+    "PORT": 8085,
+    "ENCODE_SETTINGS": {
+        "codec": "hevc_nvenc",
+        "crf": 26,
+        "preset": "p6",
+        "gpu_device": 0
+    }
+}
